@@ -1,27 +1,36 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DHT.h>
-#include <ArduinoOTA.h> // Biblioteca para Atualizações Over-The-Air (OTA)
+#include "time.h"
+#include <ArduinoOTA.h>
 
-// Configurações do WiFi
-const char* ssid = "SMARTGROW";            // Nome da rede Wi-Fi
-const char* password = "QWERTmorango123";  // Senha da rede Wi-Fi
+#include "secrets.h" // Carrega senha e SSID Wi-Fi
 
-// Configurações do DHT22 (Sensor de Temperatura e Umidade)
-#define DHTPIN 15         // Pino de conexão do DHT22
-#define DHTTYPE DHT22     // Tipo do sensor
-DHT dht(DHTPIN, DHTTYPE); // Instância do sensor DHT
+// IP fixo
+IPAddress local_IP(192, 168, 15, 200);
+IPAddress gateway(192, 168, 15, 1);
+IPAddress subnet(255, 255, 255, 0);
 
-// Configurações do sensor de umidade do solo
-#define SOIL_MOISTURE_PIN 32 // Pino de conexão do sensor de umidade do solo
+// NTP (Configuração de hora)
+const char* ntpServer = "a.st1.ntp.br";
+const long gmtOffset_sec = -10800;  // Fuso horário de Brasília
+const int daylightOffset_sec = 0;
 
-// Pinos dos relés que controlam os dispositivos
-#define RELAY_PIN_1 5  // Relé da lâmpada
-#define RELAY_PIN_3 2  // Relé dos coolers
-#define RELAY_PIN_4 4  // Relé da bomba de água
+// Sensor DHT22
+#define DHTPIN 15
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
 
-// Configurações do servidor Web
-WebServer server(80); // Inicializa o servidor na porta 80
+// Sensor de umidade do solo
+#define SOIL_MOISTURE_PIN 32
+
+// Relés
+#define RELAY_PIN_1 5  // Lâmpada
+#define RELAY_PIN_3 2  // Coolers
+#define RELAY_PIN_4 4  // Bomba
+
+// Servidor Web
+WebServer server(80);
 
 // Variáveis globais
 bool isAutomaticMode = false;    // Indica se o sistema está no modo automático
@@ -30,33 +39,57 @@ unsigned long previousMillisPump = 0;   // Controle de tempo para a bomba de ág
 unsigned long previousMillisCooler = 0; // Controle de tempo para os coolers
 bool isLightOn = false; // Estado atual da luz (ligada ou desligada)
 
-// Função de configuração inicial
-void setup() {
-  delay(2000); // Aguarda 2 segundos para inicialização
+//String hora e data
+String getFormattedTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return "Erro ao obter hora";
+  }
 
-  // Configuração da comunicação serial
+  char buffer[30];
+  strftime(buffer, sizeof(buffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
+  return String(buffer);
+}
+
+
+void setup() {
+
+  delay(2000);
+
   Serial.begin(115200);
 
-  // Inicializa o sensor DHT22
+  // Inicializa sensores e relés
   dht.begin();
-
-  // Configuração dos pinos
-  pinMode(SOIL_MOISTURE_PIN, INPUT);  // Sensor de umidade do solo
-  pinMode(RELAY_PIN_1, OUTPUT);      // Relé da lâmpada
-  pinMode(RELAY_PIN_3, OUTPUT);      // Relé dos coolers
-  pinMode(RELAY_PIN_4, OUTPUT);      // Relé da bomba de água
-
-  // Desliga todos os relés na inicialização
+  pinMode(SOIL_MOISTURE_PIN, INPUT); 
+  pinMode(RELAY_PIN_1, OUTPUT);
+  pinMode(RELAY_PIN_3, OUTPUT);
+  pinMode(RELAY_PIN_4, OUTPUT);
   digitalWrite(RELAY_PIN_1, HIGH);
   digitalWrite(RELAY_PIN_3, HIGH);
   digitalWrite(RELAY_PIN_4, HIGH);
 
-  // Configuração do Wi-Fi no modo Access Point
-  WiFi.softAP(ssid, password);
+  // Configuração do IP fixo
+  IPAddress gateway(192, 168, 15, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  if (!WiFi.config(local_IP, gateway, subnet)) {
+    Serial.println("Falha ao configurar IP estático!");
+  }
 
-  // Inicializa o recurso de atualização OTA
+  // Conecta Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando ao Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Wi-Fi conectado!");
+  Serial.print("IP do ESP32: ");
+  Serial.println(WiFi.localIP());
+
+  // Inicialização OTA
   ArduinoOTA.begin();
 
+  // Inicialização do servidor web
   // Configurações das rotas do servidor
   server.on("/", handleRoot);               // Página principal
   server.on("/data", handleData);           // Dados dos sensores
@@ -67,7 +100,13 @@ void setup() {
   server.on("/toggleRelay3Off", handleRelay3Off); // Desligar ventilação
   server.on("/toggleMode", handleToggleMode);     // Alternar modo manual/automático
 
-  // Inicializa o servidor Web
+
+  // Sincronização da hora via NTP
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+
+
+    // Inicializa o servidor Web
   server.begin();
   Serial.println("Servidor iniciado");
 }
@@ -92,6 +131,7 @@ void handleRoot() {
                 "      document.getElementById('temp').innerHTML = data.temperature + ' &deg;C';"
                 "      document.getElementById('hum').innerHTML = data.humidity + ' %';"
                 "      document.getElementById('soil').innerHTML = data.soil_moisture + ' %';"
+                "      document.getElementById('currentTime').innerHTML = data.current_time;"
                 "    }"
                 "  };"
                 "  xhr.send();"
@@ -114,6 +154,7 @@ void handleRoot() {
                 "}"
                 "</script></head><body><div id='container'>"
                 "<h2>Smart Grow</h2>"
+                "<p>Horário atual: <span id='currentTime'>--:--:--</span></p>"
                 "<p>Temperatura: <span id='temp'>--</span></p>"
                 "<p>Umidade: <span id='hum'>--</span></p>"
                 "<p>Umidade do Solo: <span id='soil'>--</span></p>"
@@ -136,16 +177,24 @@ void handleData() {
   int soilMoistureValue = analogRead(SOIL_MOISTURE_PIN); // Lê o valor do sensor de umidade do solo
   float soilMoisturePercent = map(soilMoistureValue, 1100, 2700, 100, 0); // Converte para percentual
 
+String currentTime = getFormattedTime();
+
   // Cria JSON com os dados
-  String json = "{\"temperature\":" + String(t) + ",\"humidity\":" + String(h) + ",\"soil_moisture\":" + String(soilMoisturePercent) + "}";
+String json = "{\"current_time\":\"" + currentTime +
+              "\",\"temperature\":" + String(t) + 
+              ",\"humidity\":" + String(h) + 
+              ",\"soil_moisture\":" + String(soilMoisturePercent) + "}";
+
+            
   server.send(200, "application/json", json);
-}
+              }
 
 // Alterna entre os modos manual e automático
 void handleToggleMode() {
   isAutomaticMode = !isAutomaticMode; // Alterna o estado do modo
   server.send(200, "text/plain", isAutomaticMode ? "Automático" : "Manual");
 }
+
 
 // Funções para controle dos relés
 void handleRelayOn() { digitalWrite(RELAY_PIN_1, LOW); server.send(200, "text/plain", "Luz Ligada"); }

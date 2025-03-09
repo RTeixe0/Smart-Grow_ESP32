@@ -1,1 +1,8 @@
-".vscode/\n*.bin\n*.elf\n*.hex\n*.log\nbuild/" 
+.vscode/
+*.bin
+*.elf
+*.hex
+*.log
+SmartGrow/secrets.h
+build/
+
