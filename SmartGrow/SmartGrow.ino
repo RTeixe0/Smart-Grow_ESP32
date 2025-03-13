@@ -12,9 +12,29 @@ IPAddress gateway(192, 168, 15, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 // NTP (Configuração de hora)
-const char* ntpServer = "a.st1.ntp.br";
+const char* ntpServer = "216.239.35.12";
 const long gmtOffset_sec = -10800;  // Fuso horário de Brasília
 const int daylightOffset_sec = 0;
+
+
+//String hora e data
+String getFormattedTime() {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        Serial.println("Hora não sincronizada! Tentando novamente...");
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        delay(5000);
+        if (!getLocalTime(&timeinfo)) {
+            Serial.println("Erro ao obter hora do servidor NTP!");
+            return "Erro ao obter hora";
+        }
+    }
+
+    char buffer[30];
+    strftime(buffer, sizeof(buffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
+    return String(buffer);
+}
+
 
 // Sensor DHT22
 #define DHTPIN 15
@@ -39,17 +59,6 @@ unsigned long previousMillisPump = 0;   // Controle de tempo para a bomba de ág
 unsigned long previousMillisCooler = 0; // Controle de tempo para os coolers
 bool isLightOn = false; // Estado atual da luz (ligada ou desligada)
 
-//String hora e data
-String getFormattedTime() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    return "Erro ao obter hora";
-  }
-
-  char buffer[30];
-  strftime(buffer, sizeof(buffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
-  return String(buffer);
-}
 
 
 void setup() {
@@ -86,6 +95,8 @@ void setup() {
   Serial.print("IP do ESP32: ");
   Serial.println(WiFi.localIP());
 
+  
+
   // Inicialização OTA
   ArduinoOTA.begin();
 
@@ -102,8 +113,20 @@ void setup() {
 
 
   // Sincronização da hora via NTP
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
+Serial.println("Conectando ao servidor NTP...");
+if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("Conectado ao Wi-Fi, iniciando sincronização NTP...");
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+} else {
+    Serial.println("Erro: ESP32 não está conectado ao Wi-Fi!");
+}
+delay(2000);  // Aguarde um pouco para garantir a sincronização
+struct tm timeinfo;
+if (!getLocalTime(&timeinfo)) {
+    Serial.println("Falha ao obter hora do servidor NTP!");
+} else {
+    Serial.println("Hora sincronizada com sucesso!");
+}
 
 
     // Inicializa o servidor Web
