@@ -35,6 +35,13 @@ String getFormattedTime() {
     return String(buffer);
 }
 
+//Hora do liga/desliga da luz
+int horaLigacao = 18;
+int minutoLigacao = 0;
+int horaDesligamento = 12;
+int minutoDesligamento = 30;
+
+
 
 // Sensor DHT22
 #define DHTPIN 15
@@ -249,14 +256,15 @@ void loop() {
     if (currentHour == -1) return; // Evita erro se a hora não foi obtida
 
     // Liga luz às 18:00 e desliga às 12:30 (exemplo com minutos)
-    if ((currentHour > 18) || (currentHour == 18 && currentMinute >= 0) ||  // Liga às 18:00
-        (currentHour < 01) || (currentHour == 01 && currentMinute < 8)) {   // Mantém ligada até 12:29
-        digitalWrite(RELAY_PIN_1, LOW);  // Liga a lâmpada
-    } else {
-        digitalWrite(RELAY_PIN_1, HIGH); // Desliga a lâmpada
-    }
+    if ((currentHour > horaLigacao) || (currentHour == horaLigacao && currentMinute >= minutoLigacao) ||  
+    (currentHour < horaDesligamento) || (currentHour == horaDesligamento && currentMinute < minutoDesligamento)) {
+    digitalWrite(RELAY_PIN_1, LOW);  // Liga a lâmpada
+} else {
+    digitalWrite(RELAY_PIN_1, HIGH); // Desliga a lâmpada
+}
 
-    
+
+
 
   // Funções do modo automático
   if (isAutomaticMode) {
