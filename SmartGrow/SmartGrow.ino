@@ -12,9 +12,37 @@ IPAddress gateway(192, 168, 15, 1);
 IPAddress subnet(255, 255, 255, 0);
 
 // NTP (Configuração de hora)
-const char* ntpServer = "a.st1.ntp.br";
+const char* ntpServer = "216.239.35.12";
 const long gmtOffset_sec = -10800;  // Fuso horário de Brasília
 const int daylightOffset_sec = 0;
+
+
+//String hora e data
+String getFormattedTime() {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        Serial.println("Hora não sincronizada! Tentando novamente...");
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        delay(5000);
+        if (!getLocalTime(&timeinfo)) {
+            Serial.println("Erro ao obter hora do servidor NTP!");
+            return "Erro ao obter hora";
+        }
+    }
+
+    char buffer[30];
+    strftime(buffer, sizeof(buffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
+    return String(buffer);
+}
+
+//Hora do liga/desliga da luz
+int horaLigacao = 18;
+int minutoLigacao = 0;
+int horaDesligamento = 12;
+int minutoDesligamento = 30;
+
+bool isLightAuto = true; // Por padrão, o modo automático da luz está ativado
+
 
 // Sensor DHT22
 #define DHTPIN 15
@@ -39,19 +67,22 @@ unsigned long previousMillisPump = 0;   // Controle de tempo para a bomba de ág
 unsigned long previousMillisCooler = 0; // Controle de tempo para os coolers
 bool isLightOn = false; // Estado atual da luz (ligada ou desligada)
 
-//String hora e data
-String getFormattedTime() {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    return "Erro ao obter hora";
-  }
+void handleSetSchedule() {
+    if (server.hasArg("hl") && server.hasArg("ml") && server.hasArg("hd") && server.hasArg("md")) {
+        horaLigacao = server.arg("hl").toInt();
+        minutoLigacao = server.arg("ml").toInt();
+        horaDesligamento = server.arg("hd").toInt();
+        minutoDesligamento = server.arg("md").toInt();
 
-  char buffer[30];
-  strftime(buffer, sizeof(buffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
-  return String(buffer);
+        server.send(200, "text/plain", "Horários atualizados com sucesso!");
+    } else {
+        server.send(400, "text/plain", "Erro: Parâmetros inválidos!");
+    }
 }
-
-
+void handleToggleLightMode() {
+    isLightAuto = !isLightAuto; // Alterna entre automático e manual
+    server.send(200, "text/plain", isLightAuto ? "Automático" : "Manual");
+}
 void setup() {
 
   delay(2000);
@@ -86,6 +117,8 @@ void setup() {
   Serial.print("IP do ESP32: ");
   Serial.println(WiFi.localIP());
 
+  
+
   // Inicialização OTA
   ArduinoOTA.begin();
 
@@ -98,17 +131,43 @@ void setup() {
   server.on("/activatePump", handleActivatePump); // Ativar bomba
   server.on("/toggleRelay3On", handleRelay3On);   // Ligar ventilação
   server.on("/toggleRelay3Off", handleRelay3Off); // Desligar ventilação
-  server.on("/toggleMode", handleToggleMode);     // Alternar modo manual/automático
-
+  server.on("/setSchedule", handleSetSchedule);
+  server.on("/toggleLightMode", handleToggleLightMode);
 
   // Sincronização da hora via NTP
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+Serial.println("Conectando ao servidor NTP...");
+if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("Conectado ao Wi-Fi, iniciando sincronização NTP...");
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+} else {
+    Serial.println("Erro: ESP32 não está conectado ao Wi-Fi!");
+}
+delay(2000);  // Aguarde um pouco para garantir a sincronização
+struct tm timeinfo;
+if (!getLocalTime(&timeinfo)) {
+    Serial.println("Falha ao obter hora do servidor NTP!");
+} else {
+    Serial.println("Hora sincronizada com sucesso!");
+}
 
 
 
     // Inicializa o servidor Web
   server.begin();
   Serial.println("Servidor iniciado");
+}
+
+//Obter hora atual
+void getCurrentTime(int &hour, int &minute) {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        Serial.println("Falha ao obter hora do servidor NTP!");
+        hour = -1;
+        minute = -1;
+        return;
+    }
+    hour = timeinfo.tm_hour;
+    minute = timeinfo.tm_min;
 }
 
 // Função para servir a página principal
@@ -152,6 +211,30 @@ void handleRoot() {
                 "  };"
                 "  xhr.send();"
                 "}"
+               "function updateSchedule() {"
+              "  var hl = document.getElementById('horaLigacao').value;"
+              "  var ml = document.getElementById('minutoLigacao').value;"
+              "  var hd = document.getElementById('horaDesligamento').value;"
+              "  var md = document.getElementById('minutoDesligamento').value;"
+              "  var xhr = new XMLHttpRequest();"
+              "  xhr.open('GET', '/setSchedule?hl=' + hl + '&ml=' + ml + '&hd=' + hd + '&md=' + md, true);"
+              "  xhr.onreadystatechange = function() {"
+              "    if (xhr.readyState == 4 && xhr.status == 200) {"
+              "      alert(xhr.responseText);"
+              "    }"
+              "  };"
+              "  xhr.send();"
+              "}"
+            "function toggleLightMode() {"
+              "  var xhr = new XMLHttpRequest();"
+              "  xhr.open('GET', '/toggleLightMode', true);"
+              "  xhr.onreadystatechange = function() {"
+              "    if (xhr.readyState == 4 && xhr.status == 200) {"
+              "      document.getElementById('lightMode').innerHTML = xhr.responseText;"
+              "    }"
+              "  };"
+              "  xhr.send();"
+              "}"
                 "</script></head><body><div id='container'>"
                 "<h2>Smart Grow</h2>"
                 "<p>Horário atual: <span id='currentTime'>--:--:--</span></p>"
@@ -163,9 +246,17 @@ void handleRoot() {
                 "<button onclick=\"sendCommand('/activatePump')\">Ativar Bomba</button>"
                 "<button onclick=\"sendCommand('/toggleRelay3On')\">Ligar Ventilação</button>"
                 "<button onclick=\"sendCommand('/toggleRelay3Off')\">Desligar Ventilação</button>"
-                "<p>Modo Atual: <span id='mode'>" + String(isAutomaticMode ? "Automático" : "Manual") + "</span></p>"
-                "<button onclick='toggleMode()'>Alternar Modo</button>"
-                "</div></body></html>";
+              "<p>Modo da Luz: <span id='lightMode'>" + String(isLightAuto ? "Automático" : "Manual") + "</span></p>"
+              "<button onclick='toggleLightMode()'>Alternar Automático Luz</button>"
+                "</div>"
+              "<div id='container'>"
+              "<h2>Controle de Horário</h2>"
+              "<p>Hora de Ligar: <input id='horaLigacao' type='number' min='0' max='23' value='" + String(horaLigacao) + "'> : "
+              "<input id='minutoLigacao' type='number' min='0' max='59' value='" + String(minutoLigacao) + "'></p>"
+              "<p>Hora de Desligar: <input id='horaDesligamento' type='number' min='0' max='23' value='" + String(horaDesligamento) + "'> : "
+              "<input id='minutoDesligamento' type='number' min='0' max='59' value='" + String(minutoDesligamento) + "'></p>"
+              "<button onclick='updateSchedule()'>Salvar Horários</button>"
+              "</div></body></html>";
 
   server.send(200, "text/html", html);
 }
@@ -208,34 +299,19 @@ void loop() {
   ArduinoOTA.handle();  // Gerencia as atualizações OTA
   server.handleClient(); // Gerencia os pedidos do cliente
 
-  // Funções do modo automático
-  if (isAutomaticMode) {
-    unsigned long currentMillis = millis();
 
-    // Controle da luz (40s ligada, 20s desligada)
-    if (currentMillis - previousMillisLight >= (isLightOn ? 40000 : 20000)) {
-      isLightOn = !isLightOn;
-      digitalWrite(RELAY_PIN_1, isLightOn ? LOW : HIGH);
-      previousMillisLight = currentMillis;
+  int currentHour, currentMinute;
+    getCurrentTime(currentHour, currentMinute);
+    if (currentHour == -1) return; // Evita erro se a hora não foi obtida
+
+    // Se a luz estiver no modo automático, siga a programação de horário
+    if (isLightAuto) {
+        if ((currentHour > horaLigacao) || (currentHour == horaLigacao && currentMinute >= minutoLigacao) ||  
+            (currentHour < horaDesligamento) || (currentHour == horaDesligamento && currentMinute < minutoDesligamento)) {
+            digitalWrite(RELAY_PIN_1, LOW);  // Liga a lâmpada
+        } else {
+            digitalWrite(RELAY_PIN_1, HIGH); // Desliga a lâmpada
+        }
     }
 
-    // Controle da bomba de água (umidade abaixo de 40% por 5s)
-    int soilMoistureValue = analogRead(SOIL_MOISTURE_PIN);
-    float soilMoisturePercent = map(soilMoistureValue, 1100, 2700, 100, 0);
-    if (soilMoisturePercent < 40 && currentMillis - previousMillisPump >= 5000) {
-      digitalWrite(RELAY_PIN_4, LOW);
-      delay(1500);
-      digitalWrite(RELAY_PIN_4, HIGH);
-      previousMillisPump = currentMillis;
-    }
-
-    // Controle dos coolers (temperatura > 28°C ou < 25°C)
-    float temperature = dht.readTemperature();
-    if (temperature > 28) {
-      digitalWrite(RELAY_PIN_3, LOW);
-      previousMillisCooler = currentMillis;
-    } else if (temperature < 25 && currentMillis - previousMillisCooler >= 5000) {
-      digitalWrite(RELAY_PIN_3, HIGH);
-    }
-  }
 }
