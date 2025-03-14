@@ -128,10 +128,22 @@ if (!getLocalTime(&timeinfo)) {
     Serial.println("Hora sincronizada com sucesso!");
 }
 
-
     // Inicializa o servidor Web
   server.begin();
   Serial.println("Servidor iniciado");
+}
+
+//Obter hora atual
+void getCurrentTime(int &hour, int &minute) {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        Serial.println("Falha ao obter hora do servidor NTP!");
+        hour = -1;
+        minute = -1;
+        return;
+    }
+    hour = timeinfo.tm_hour;
+    minute = timeinfo.tm_min;
 }
 
 // Função para servir a página principal
@@ -230,6 +242,21 @@ void handleActivatePump() { digitalWrite(RELAY_PIN_4, LOW); delay(1500); digital
 void loop() {
   ArduinoOTA.handle();  // Gerencia as atualizações OTA
   server.handleClient(); // Gerencia os pedidos do cliente
+
+
+  int currentHour, currentMinute;
+    getCurrentTime(currentHour, currentMinute);
+    if (currentHour == -1) return; // Evita erro se a hora não foi obtida
+
+    // Liga luz às 18:00 e desliga às 12:30 (exemplo com minutos)
+    if ((currentHour > 18) || (currentHour == 18 && currentMinute >= 0) ||  // Liga às 18:00
+        (currentHour < 01) || (currentHour == 01 && currentMinute < 8)) {   // Mantém ligada até 12:29
+        digitalWrite(RELAY_PIN_1, LOW);  // Liga a lâmpada
+    } else {
+        digitalWrite(RELAY_PIN_1, HIGH); // Desliga a lâmpada
+    }
+
+    
 
   // Funções do modo automático
   if (isAutomaticMode) {
