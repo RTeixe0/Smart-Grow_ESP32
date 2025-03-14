@@ -66,7 +66,18 @@ unsigned long previousMillisPump = 0;   // Controle de tempo para a bomba de ág
 unsigned long previousMillisCooler = 0; // Controle de tempo para os coolers
 bool isLightOn = false; // Estado atual da luz (ligada ou desligada)
 
+void handleSetSchedule() {
+    if (server.hasArg("hl") && server.hasArg("ml") && server.hasArg("hd") && server.hasArg("md")) {
+        horaLigacao = server.arg("hl").toInt();
+        minutoLigacao = server.arg("ml").toInt();
+        horaDesligamento = server.arg("hd").toInt();
+        minutoDesligamento = server.arg("md").toInt();
 
+        server.send(200, "text/plain", "Horários atualizados com sucesso!");
+    } else {
+        server.send(400, "text/plain", "Erro: Parâmetros inválidos!");
+    }
+}
 
 void setup() {
 
@@ -117,7 +128,7 @@ void setup() {
   server.on("/toggleRelay3On", handleRelay3On);   // Ligar ventilação
   server.on("/toggleRelay3Off", handleRelay3Off); // Desligar ventilação
   server.on("/toggleMode", handleToggleMode);     // Alternar modo manual/automático
-
+  server.on("/setSchedule", handleSetSchedule);
 
   // Sincronização da hora via NTP
 Serial.println("Conectando ao servidor NTP...");
@@ -194,6 +205,20 @@ void handleRoot() {
                 "  };"
                 "  xhr.send();"
                 "}"
+               "function updateSchedule() {"
+              "  var hl = document.getElementById('horaLigacao').value;"
+              "  var ml = document.getElementById('minutoLigacao').value;"
+              "  var hd = document.getElementById('horaDesligamento').value;"
+              "  var md = document.getElementById('minutoDesligamento').value;"
+              "  var xhr = new XMLHttpRequest();"
+              "  xhr.open('GET', '/setSchedule?hl=' + hl + '&ml=' + ml + '&hd=' + hd + '&md=' + md, true);"
+              "  xhr.onreadystatechange = function() {"
+              "    if (xhr.readyState == 4 && xhr.status == 200) {"
+              "      alert(xhr.responseText);"
+              "    }"
+              "  };"
+              "  xhr.send();"
+              "}"
                 "</script></head><body><div id='container'>"
                 "<h2>Smart Grow</h2>"
                 "<p>Horário atual: <span id='currentTime'>--:--:--</span></p>"
@@ -207,7 +232,15 @@ void handleRoot() {
                 "<button onclick=\"sendCommand('/toggleRelay3Off')\">Desligar Ventilação</button>"
                 "<p>Modo Atual: <span id='mode'>" + String(isAutomaticMode ? "Automático" : "Manual") + "</span></p>"
                 "<button onclick='toggleMode()'>Alternar Modo</button>"
-                "</div></body></html>";
+                "</div>"
+              "<div id='container'>"
+              "<h2>Controle de Horário</h2>"
+              "<p>Hora de Ligar: <input id='horaLigacao' type='number' min='0' max='23' value='" + String(horaLigacao) + "'> : "
+              "<input id='minutoLigacao' type='number' min='0' max='59' value='" + String(minutoLigacao) + "'></p>"
+              "<p>Hora de Desligar: <input id='horaDesligamento' type='number' min='0' max='23' value='" + String(horaDesligamento) + "'> : "
+              "<input id='minutoDesligamento' type='number' min='0' max='59' value='" + String(minutoDesligamento) + "'></p>"
+              "<button onclick='updateSchedule()'>Salvar Horários</button>"
+              "</div></body></html>";
 
   server.send(200, "text/html", html);
 }
