@@ -15,4 +15,6 @@ void turnCoolersOff();
 // Controle da bomba de água
 void activatePump();
 
+bool isLightOn();
+
 #endif

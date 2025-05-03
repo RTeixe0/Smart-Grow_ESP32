@@ -5,9 +5,10 @@ void initWiFi();
 void initWebServer();
 void handleWebServer();
 void handleOTA();
+void handleToggleCoolerMode();
+
 
 // Expondo as variáveis globais
-extern bool isAutomaticMode;
 extern bool isLightAuto;
 extern int horaLigacao;
 extern int minutoLigacao;
