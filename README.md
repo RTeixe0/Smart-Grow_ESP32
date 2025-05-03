@@ -56,10 +56,6 @@ Usamos o poderoso **ESP32** como coração do sistema, programado em **C++ (Ardu
 
 O projeto tem potencial! Planos incluem implementar controle automático para a bomba baseado nos sensores, integração com nuvem, app mobile, suporte a mais sensores e otimizações.
 
-## Licença 📜
-
-Distribuído sob a licença MIT. Veja o arquivo LICENSE (se existir no repositório).
-
 ## Contato 📫
 
 Dúvidas ou sugestões? Abra uma issue aqui no GitHub ou fale com o dev:
