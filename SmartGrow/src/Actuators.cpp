@@ -23,6 +23,10 @@ void turnLightOff() {
     digitalWrite(RELAY_PIN_LIGHT, HIGH);
 }
 
+bool isLightOn() {
+    return digitalRead(RELAY_PIN_LIGHT) == LOW;
+  }  
+
 // Controle dos Coolers
 void turnCoolersOn() {
     digitalWrite(RELAY_PIN_COOLERS, LOW);  

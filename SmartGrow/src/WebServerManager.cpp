@@ -13,8 +13,8 @@
 WebServer server(80);
 
 // Variáveis de controle
-bool isAutomaticMode = false;
 bool isLightAuto = true;
+bool isCoolerAuto = true;
 int horaLigacao = 18;
 int minutoLigacao = 0;
 int horaDesligamento = 12;
@@ -28,9 +28,10 @@ void handleTurnLightOff();
 void handleTurnCoolersOn();
 void handleTurnCoolersOff();
 void handleActivatePump();
-void handleToggleMode();
 void handleSetSchedule();
 void handleToggleLightMode();
+void handleToggleCoolerMode();
+
 
 // Implementações principais
 
@@ -59,9 +60,10 @@ void initWebServer() {
     server.on("/turnCoolersOn", handleTurnCoolersOn);
     server.on("/turnCoolersOff", handleTurnCoolersOff);
     server.on("/activatePump", handleActivatePump);
-    server.on("/toggleMode", handleToggleMode);
     server.on("/setSchedule", handleSetSchedule);
     server.on("/toggleLightMode", handleToggleLightMode);
+    server.on("/toggleCoolerMode", handleToggleCoolerMode);
+
 
     server.begin();
     Serial.println("Servidor Web iniciado");
@@ -113,12 +115,12 @@ void handleRoot() {
                   "  xhr.open('GET', endpoint, true);"
                   "  xhr.send();"
                   "}"
-                  "function toggleMode() {"
+                  "function toggleCoolerMode() {"
                   "  var xhr = new XMLHttpRequest();"
-                  "  xhr.open('GET', '/toggleMode', true);"
+                  "  xhr.open('GET', '/toggleCoolerMode', true);"
                   "  xhr.onreadystatechange = function() {"
                   "    if (xhr.readyState == 4 && xhr.status == 200) {"
-                  "      document.getElementById('mode').innerHTML = xhr.responseText;"
+                  "      document.getElementById('coolerMode').innerHTML = xhr.responseText;"
                   "    }"
                   "  };"
                   "  xhr.send();"
@@ -163,8 +165,9 @@ void handleRoot() {
                   "<button onclick=\"sendCommand('/turnCoolersOff')\">Desligar Ventilação</button>"
                   "<p>Modo da Luz: <span id='lightMode'>Automático</span></p>"
                   "<button onclick='toggleLightMode()'>Alternar Modo Luz</button>"
-                  "<p>Modo do Sistema: <span id='mode'>Manual</span></p>"
-                  "<button onclick='toggleMode()'>Alternar Modo Sistema</button>"
+                  "<p>Modo dos Coolers: <span id='coolerMode'>Automático</span></p>"
+                  "<button onclick='toggleCoolerMode()'>Alternar Modo Coolers</button>"
+
                   "</div>"
 
                   "<div id='scheduleContainer'>"
@@ -207,26 +210,28 @@ void handleTurnLightOff() {
 }
 
 void handleTurnCoolersOn() {
-    turnCoolersOn();
-    server.send(200, "text/plain", "Ventilação Ligada");
-}
-
-void handleTurnCoolersOff() {
-    turnCoolersOff();
-    server.send(200, "text/plain", "Ventilação Desligada");
-}
-
+    if (!isCoolerAuto) {
+      turnCoolersOn();
+      server.send(200, "text/plain", "Coolers ligados manualmente");
+    } else {
+      server.send(403, "text/plain", "Coolers em modo automático");
+    }
+  }
+  
+  void handleTurnCoolersOff() {
+    if (!isCoolerAuto) {
+      turnCoolersOff();
+      server.send(200, "text/plain", "Coolers desligados manualmente");
+    } else {
+      server.send(403, "text/plain", "Coolers em modo automático");
+    }
+  }
+  
 void handleActivatePump() {
     activatePump();
     server.send(200, "text/plain", "Bomba Ativada");
 }
 
-
-// Modos e Agendamento
-void handleToggleMode() {
-    isAutomaticMode = !isAutomaticMode;
-    server.send(200, "text/plain", isAutomaticMode ? "Automático" : "Manual");
-}
 
 void handleSetSchedule() {
     if (server.hasArg("hl") && server.hasArg("ml") && server.hasArg("hd") && server.hasArg("md")) {
@@ -256,3 +261,10 @@ void handleToggleLightMode() {
     isLightAuto = !isLightAuto;
     server.send(200, "text/plain", isLightAuto ? "Automático" : "Manual");
 }
+
+void handleToggleCoolerMode() {
+    isCoolerAuto = !isCoolerAuto;
+    server.send(200, "text/plain", isCoolerAuto ? "Automático" : "Manual");
+  }
+  
+  
