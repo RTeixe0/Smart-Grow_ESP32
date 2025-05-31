@@ -22,7 +22,7 @@ Atualmente simples, mas com planos futuros de evolução com React e monitoramen
 
 ## ⚙️ Componentes Utilizados
 
-- ESP32 NodeMCU
+- ESP32
 - Sensor DHT22 (temperatura e umidade do ar)
 - Sensor capacitivo de umidade do solo
 - Relé 5V
